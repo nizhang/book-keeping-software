@@ -70,8 +70,9 @@ function parseCsv(buffer) {
       amount = parseFloat(val);
     } else if (debitIdx !== -1 || creditIdx !== -1) {
       // Separate debit/credit columns
-      const debit  = debitIdx  !== -1 ? parseFloat((row[debitIdx]  || '0').replace(/[$,\s]/g, '')) || 0 : 0;
-      const credit = creditIdx !== -1 ? parseFloat((row[creditIdx] || '0').replace(/[$,\s]/g, '')) || 0 : 0;
+      // Use Math.abs on debit — some banks put a negative sign in the debit column already
+      const debit  = debitIdx  !== -1 ? Math.abs(parseFloat((row[debitIdx]  || '0').replace(/[$,\s]/g, '')) || 0) : 0;
+      const credit = creditIdx !== -1 ? Math.abs(parseFloat((row[creditIdx] || '0').replace(/[$,\s]/g, '')) || 0) : 0;
       amount = credit - debit; // positive = money in, negative = money out
     } else {
       throw new Error('Cannot find amount columns in CSV');
