@@ -67,6 +67,14 @@ export default function BalanceSheet() {
             <option key={c.id} value={String(c.id)}>{c.name}</option>
           ))}
         </select>
+
+        <a
+          href={`/api/reports/balance-sheet/export?asOfDate=${asOfDate}${classId ? `&classId=${classId}` : ''}`}
+          download
+          style={{ marginLeft: 'auto', padding: '7px 16px', background: '#16a34a', color: '#fff', borderRadius: '7px', fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}
+        >
+          ⬇ Export Excel
+        </a>
       </div>
 
       {isLoading && <div style={{ color: '#64748b' }}>Loading...</div>}

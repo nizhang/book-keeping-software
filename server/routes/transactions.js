@@ -10,7 +10,7 @@ router.get('/', (req, res) => {
     page = 1, limit = 50,
     startDate, endDate,
     accountId, categorized,
-    search,
+    search, classId,
     sortBy = 'date', sortDir = 'desc',
   } = req.query;
 
@@ -24,6 +24,12 @@ router.get('/', (req, res) => {
   if (categorized === 'true')  conditions.push('t.is_categorized = 1');
   if (categorized === 'false') conditions.push('t.is_categorized = 0');
   if (search)    { conditions.push("t.description LIKE @search"); params.search = `%${search}%`; }
+  if (classId)   {
+    conditions.push(`(t.class_id = @classId OR EXISTS (
+      SELECT 1 FROM journal_entries je WHERE je.transaction_id = t.id AND je.class_id = @classId
+    ))`);
+    params.classId = parseInt(classId);
+  }
 
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const validSortCols = { date: 't.date', description: 't.description', amount: 't.amount' };

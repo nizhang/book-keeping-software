@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTransactions, useCategorize, useUncategorize, useBulkCategorize, useDeleteTransaction, useFlipAmount } from '../../api/transactions';
 import { useAccounts } from '../../api/accounts';
+import { useClasses } from '../../api/classes';
 import AccountSelect from '../../components/shared/AccountSelect';
 import ClassSelect from '../../components/shared/ClassSelect';
 import AmountDisplay from '../../components/shared/AmountDisplay';
@@ -86,6 +87,7 @@ function SplitModal({ txn, onClose }) {
   const handleSave = async () => {
     if (!isBalanced) return toast.error('Amounts must equal the transaction total');
     if (splits.some(s => !s.categoryAccountId)) return toast.error('Each line needs an account');
+    if (splits.some(s => !s.classId)) return toast.error('Each line must have a class assigned');
     try {
       await categorize.mutateAsync({
         id: txn.id,
@@ -272,10 +274,12 @@ function TransactionRow({ txn, selected, onSelect }) {
 
   const handleQuickCategorize = async (accountId) => {
     if (!accountId) return;
+    const classId = txn.class_id || null;
+    if (!classId) return toast.error('Assign a class to this transaction before categorizing');
     try {
       await categorize.mutateAsync({
         id: txn.id,
-        splits: [{ categoryAccountId: accountId, amount: Math.abs(txn.amount), classId: null, memo: null }],
+        splits: [{ categoryAccountId: accountId, amount: Math.abs(txn.amount), classId, memo: null }],
       });
       toast.success('Categorized');
     } catch (err) { toast.error(err.message); }
@@ -372,6 +376,7 @@ export default function Transactions() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ limit: 50, categorized: 'false' });
   const [selected, setSelected] = useState([]);
+  const { data: classes = [] } = useClasses();
 
   const { data, isLoading } = useTransactions({ ...filters, page });
   const transactions = data?.data || [];
@@ -402,6 +407,12 @@ export default function Transactions() {
           <option value="">All</option>
           <option value="false">Uncategorized</option>
           <option value="true">Categorized</option>
+        </select>
+        <select style={s.select} onChange={setFilter('classId')}>
+          <option value="">All classes</option>
+          {classes.filter(c => c.is_active).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
         </select>
       </div>
 

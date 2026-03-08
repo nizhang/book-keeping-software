@@ -68,7 +68,10 @@ export default function OpeningBalances() {
   const removeLine = (id) =>
     setLines(ls => ls.filter(l => l.id !== id));
 
-  const addLine = () => setLines(ls => [...ls, emptyLine()]);
+  const addLine = () => setLines(ls => [
+    ...ls,
+    { ...emptyLine(), classId: filterClassId || '' },
+  ]);
 
   // Summary calculations
   const getAmount = (l) => parseFloat(l.amount) || 0;
@@ -177,23 +180,21 @@ export default function OpeningBalances() {
                           onUpdate={updateLine} onRemove={removeLine} />;
         })}
 
-        {/* Unassigned (no account selected yet) — only show in "all" view */}
-        {!filterClassId && lines.filter(l => !getAccountType(l.accountId)).map(l => (
+        {/* Unassigned (no account selected yet) */}
+        {visibleLines.filter(l => !getAccountType(l.accountId)).map(l => (
           <LineRow key={l.id} line={l} accounts={balanceAccounts} classes={allClasses}
                    onUpdate={updateLine} onRemove={removeLine} />
         ))}
 
         {filterClassId && visibleLines.length === 0 && (
           <div style={{ fontSize: '13px', color: '#94a3b8', padding: '12px 0' }}>
-            No opening balance lines for this class.
+            No opening balance lines for this class. Click &ldquo;+ Add Line&rdquo; to add one.
           </div>
         )}
 
-        {!filterClassId && (
-          <div style={{ marginTop: '12px' }}>
-            <button style={s.addBtn} onClick={addLine}>+ Add Line</button>
-          </div>
-        )}
+        <div style={{ marginTop: '12px' }}>
+          <button style={s.addBtn} onClick={addLine}>+ Add Line</button>
+        </div>
       </div>
 
       {/* Summary */}
