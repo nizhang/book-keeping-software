@@ -39,6 +39,46 @@ router.get('/balance-sheet', (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/reports/drilldown?accountId=X&startDate=Y&endDate=Z[&classId=N][&includeOpeningBalance=1]
+router.get('/drilldown', (req, res, next) => {
+  try {
+    const { accountId, startDate, endDate, classId, includeOpeningBalance } = req.query;
+    if (!accountId) return next(Object.assign(new Error('accountId is required'), { status: 400 }));
+
+    const db = require('../db/database').getDb();
+    const params = { accountId: parseInt(accountId) };
+    const conditions = ['je.account_id = @accountId'];
+
+    if (startDate) { conditions.push('t.date >= @startDate'); params.startDate = startDate; }
+    if (endDate)   { conditions.push('t.date <= @endDate');   params.endDate   = endDate;   }
+    if (classId)   { conditions.push('je.class_id = @classId'); params.classId = parseInt(classId); }
+    if (!includeOpeningBalance) conditions.push(`(t.type IS NULL OR t.type != 'opening_balance')`);
+
+    const entries = db.prepare(`
+      SELECT
+        t.id          AS transaction_id,
+        t.date,
+        t.description,
+        t.type        AS transaction_type,
+        je.entry_type,
+        je.amount,
+        je.memo,
+        cls.name      AS class_name,
+        a.name        AS account_name,
+        a.code        AS account_code
+      FROM journal_entries je
+      JOIN transactions t  ON je.transaction_id = t.id
+      JOIN accounts a      ON je.account_id     = a.id
+      LEFT JOIN classes cls ON je.class_id      = cls.id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY t.date DESC, t.id DESC
+    `).all(params);
+
+    const acct = db.prepare('SELECT name, code, normal_balance FROM accounts WHERE id = ?').get(parseInt(accountId));
+    res.json({ account: acct, entries });
+  } catch (e) { next(e); }
+});
+
 // GET /api/reports/income-statement/export
 router.get('/income-statement/export', (req, res, next) => {
   try {

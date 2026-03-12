@@ -39,10 +39,11 @@ export default function OpeningBalances() {
   const { data: saved,          isLoading: loadingSaved   } = useOpeningBalances();
   const saveMutation = useSaveOpeningBalances();
 
-  // Only ASSET + LIABILITY accounts are relevant for opening balances
-  const balanceAccounts = allAccounts.filter(a => a.type === 'ASSET' || a.type === 'LIABILITY');
+  // ASSET, LIABILITY, and EQUITY — exclude code 3040 (Opening Balance Equity, auto-plug)
+  const balanceAccounts   = allAccounts.filter(a => ['ASSET', 'LIABILITY', 'EQUITY'].includes(a.type) && a.code !== '3040');
   const assetAccounts     = balanceAccounts.filter(a => a.type === 'ASSET');
   const liabilityAccounts = balanceAccounts.filter(a => a.type === 'LIABILITY');
+  const equityAccounts    = balanceAccounts.filter(a => a.type === 'EQUITY');
 
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState([emptyLine()]);
@@ -86,12 +87,13 @@ export default function OpeningBalances() {
 
   const totalAssets      = visibleLines.filter(l => getAccountType(l.accountId) === 'ASSET').reduce((s, l) => s + getAmount(l), 0);
   const totalLiabilities = visibleLines.filter(l => getAccountType(l.accountId) === 'LIABILITY').reduce((s, l) => s + getAmount(l), 0);
-  const netEquity        = totalAssets - totalLiabilities;
+  const totalEquity      = visibleLines.filter(l => getAccountType(l.accountId) === 'EQUITY').reduce((s, l) => s + getAmount(l), 0);
+  const obeEquity        = totalAssets - totalLiabilities - totalEquity;
 
   const handleSave = async () => {
     if (!asOfDate) { toast.error('Please set an "as of" date'); return; }
 
-    const validLines = lines.filter(l => l.accountId && getAmount(l) > 0);
+    const validLines = lines.filter(l => l.accountId && getAmount(l) !== 0);
     if (validLines.length === 0) { toast.error('Add at least one balance line'); return; }
 
     const payload = validLines.map(l => ({
@@ -180,6 +182,17 @@ export default function OpeningBalances() {
                           onUpdate={updateLine} onRemove={removeLine} />;
         })}
 
+        {/* EQUITY lines */}
+        {visibleLines.some(l => getAccountType(l.accountId) === 'EQUITY') && (
+          <div style={s.section}>Equity</div>
+        )}
+        {visibleLines.map(l => {
+          const type = getAccountType(l.accountId);
+          if (type !== 'EQUITY') return null;
+          return <LineRow key={l.id} line={l} accounts={balanceAccounts} classes={allClasses}
+                          onUpdate={updateLine} onRemove={removeLine} />;
+        })}
+
         {/* Unassigned (no account selected yet) */}
         {visibleLines.filter(l => !getAccountType(l.accountId)).map(l => (
           <LineRow key={l.id} line={l} accounts={balanceAccounts} classes={allClasses}
@@ -200,7 +213,7 @@ export default function OpeningBalances() {
       {/* Summary */}
       <div style={s.card}>
         <div style={s.cardTitle}>Summary</div>
-        <div style={s.summaryGrid}>
+        <div style={{ ...s.summaryGrid, gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
           <div style={{ ...s.summaryCard, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
             <div style={s.summaryLabel}>Total Assets</div>
             <div style={{ ...s.summaryValue, color: '#2563eb' }}>${fmt(totalAssets)}</div>
@@ -209,16 +222,19 @@ export default function OpeningBalances() {
             <div style={s.summaryLabel}>Total Liabilities</div>
             <div style={{ ...s.summaryValue, color: '#dc2626' }}>${fmt(totalLiabilities)}</div>
           </div>
-          <div style={{ ...s.summaryCard, background: netEquity >= 0 ? '#f0fdf4' : '#fef9c3', border: `1px solid ${netEquity >= 0 ? '#bbf7d0' : '#fde68a'}` }}>
+          <div style={{ ...s.summaryCard, background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+            <div style={s.summaryLabel}>Total Equity</div>
+            <div style={{ ...s.summaryValue, color: '#7c3aed' }}>${fmt(totalEquity)}</div>
+          </div>
+          <div style={{ ...s.summaryCard, background: obeEquity >= 0 ? '#f0fdf4' : '#fef9c3', border: `1px solid ${obeEquity >= 0 ? '#bbf7d0' : '#fde68a'}` }}>
             <div style={s.summaryLabel}>Opening Balance Equity (3040)</div>
-            <div style={{ ...s.summaryValue, color: netEquity >= 0 ? '#16a34a' : '#d97706' }}>
-              {netEquity < 0 ? '-' : ''}${fmt(Math.abs(netEquity))}
+            <div style={{ ...s.summaryValue, color: obeEquity >= 0 ? '#16a34a' : '#d97706' }}>
+              {obeEquity < 0 ? '-' : ''}${fmt(Math.abs(obeEquity))}
             </div>
           </div>
         </div>
         <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px', marginBottom: 0 }}>
-          Opening Balance Equity = Total Assets − Total Liabilities.
-          This auto-balances your double-entry books.
+          Opening Balance Equity (3040) = Total Assets − Total Liabilities − Total Equity. This auto-balances your books.
         </p>
       </div>
 
@@ -234,6 +250,7 @@ export default function OpeningBalances() {
 function LineRow({ line, accounts, classes, onUpdate, onRemove }) {
   const assetAccts     = accounts.filter(a => a.type === 'ASSET');
   const liabilityAccts = accounts.filter(a => a.type === 'LIABILITY');
+  const equityAccts    = accounts.filter(a => a.type === 'EQUITY');
 
   return (
     <div style={s.grid}>
@@ -254,12 +271,16 @@ function LineRow({ line, accounts, classes, onUpdate, onRemove }) {
             <option key={a.id} value={String(a.id)}>{a.code} {a.name}</option>
           ))}
         </optgroup>
+        <optgroup label="EQUITY">
+          {equityAccts.map(a => (
+            <option key={a.id} value={String(a.id)}>{a.code} {a.name}</option>
+          ))}
+        </optgroup>
       </select>
 
       {/* Amount */}
       <input
         type="number"
-        min="0"
         step="0.01"
         placeholder="0.00"
         style={{ ...s.input, width: '100%', textAlign: 'right' }}

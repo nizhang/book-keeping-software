@@ -169,25 +169,33 @@ function saveOpeningBalances(asOfDate, lines) {
 
     for (const line of lines) {
       if (!line.accountId) throw Object.assign(new Error('Each line must have an accountId'), { status: 400 });
-      if (typeof line.amount !== 'number' || line.amount <= 0) {
-        throw Object.assign(new Error('Each line amount must be a positive number'), { status: 400 });
+      if (typeof line.amount !== 'number' || line.amount === 0) {
+        throw Object.assign(new Error('Each line amount must be non-zero'), { status: 400 });
       }
 
       const acct = db.prepare('SELECT * FROM accounts WHERE id = ?').get(line.accountId);
       if (!acct) throw Object.assign(new Error(`Account ${line.accountId} not found`), { status: 404 });
 
+      const absAmount  = Math.abs(line.amount);
+      const isNegative = line.amount < 0;
+
       // ASSET (DEBIT normal): DEBIT the asset account, CREDIT OBE
       // LIABILITY/EQUITY (CREDIT normal): CREDIT the account, DEBIT OBE
-      const isDebitNormal  = acct.normal_balance === 'DEBIT';
-      const acctEntryType  = isDebitNormal ? 'DEBIT'  : 'CREDIT';
-      const obeEntryType   = isDebitNormal ? 'CREDIT' : 'DEBIT';
+      // If amount is negative (e.g. equity deficit), flip both sides
+      const isDebitNormal = acct.normal_balance === 'DEBIT';
+      let acctEntryType   = isDebitNormal ? 'DEBIT'  : 'CREDIT';
+      let obeEntryType    = isDebitNormal ? 'CREDIT' : 'DEBIT';
+      if (isNegative) {
+        acctEntryType = acctEntryType === 'DEBIT' ? 'CREDIT' : 'DEBIT';
+        obeEntryType  = obeEntryType  === 'DEBIT' ? 'CREDIT' : 'DEBIT';
+      }
 
       // Account entry
       insertEntry.run({
         txnId:     txnId,
         accountId: line.accountId,
         entryType: acctEntryType,
-        amount:    line.amount,
+        amount:    absAmount,
         classId:   line.classId || null,
       });
 
@@ -196,7 +204,7 @@ function saveOpeningBalances(asOfDate, lines) {
         txnId:     txnId,
         accountId: obEquityAccount.id,
         entryType: obeEntryType,
-        amount:    line.amount,
+        amount:    absAmount,
         classId:   line.classId || null,
       });
     }

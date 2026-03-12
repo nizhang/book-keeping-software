@@ -20,3 +20,18 @@ export const useBalanceSheet = (asOfDate, classId = null) => {
     enabled: !!asOfDate,
   });
 };
+
+export const useDrilldown = (params) => {
+  const { accountId, startDate, endDate, classId, includeOpeningBalance } = params || {};
+  const qs = new URLSearchParams();
+  if (accountId)            qs.set('accountId', accountId);
+  if (startDate)            qs.set('startDate', startDate);
+  if (endDate)              qs.set('endDate', endDate);
+  if (classId)              qs.set('classId', classId);
+  if (includeOpeningBalance) qs.set('includeOpeningBalance', '1');
+  return useQuery({
+    queryKey: ['reports', 'drilldown', accountId, startDate, endDate, classId, includeOpeningBalance],
+    queryFn: () => api.get(`/reports/drilldown?${qs}`),
+    enabled: !!accountId,
+  });
+};

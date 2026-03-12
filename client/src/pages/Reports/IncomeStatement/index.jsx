@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useIncomeStatement } from '../../../api/reports';
 import { useClasses } from '../../../api/classes';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import DrilldownModal from '../../../components/shared/DrilldownModal';
 import dayjs from 'dayjs';
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
@@ -33,6 +34,14 @@ export default function IncomeStatement() {
   const [startDate, setStartDate] = useState(dayjs().startOf('year').format('YYYY-MM-DD'));
   const [endDate, setEndDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [classId, setClassId] = useState('');
+  const [drilldown, setDrilldown] = useState(null);
+
+  const openDrilldown = (r) => setDrilldown({
+    accountId: r.account_id,
+    startDate,
+    endDate,
+    classId: classId || null,
+  });
 
   const { data: classes = [] } = useClasses();
   const { data, isLoading, error } = useIncomeStatement(startDate, endDate, classId || null);
@@ -116,7 +125,7 @@ export default function IncomeStatement() {
             {data.revenue.map(r => (
               <div key={r.account_id} style={s.row}>
                 <span><span style={s.code}>{r.code}</span>{r.name}</span>
-                <span style={{ color: '#16a34a', fontWeight: '500' }}>{fmt(r.total)}</span>
+                <span onClick={() => openDrilldown(r)} style={{ color: '#16a34a', fontWeight: '500', cursor: 'pointer', textDecoration: 'underline dotted' }}>{fmt(r.total)}</span>
               </div>
             ))}
             {data.revenue.length === 0 && (
@@ -136,7 +145,7 @@ export default function IncomeStatement() {
             {data.expenses.map(r => (
               <div key={r.account_id} style={s.row}>
                 <span><span style={s.code}>{r.code}</span>{r.name}</span>
-                <span style={{ color: '#dc2626', fontWeight: '500' }}>{fmt(r.total)}</span>
+                <span onClick={() => openDrilldown(r)} style={{ color: '#dc2626', fontWeight: '500', cursor: 'pointer', textDecoration: 'underline dotted' }}>{fmt(r.total)}</span>
               </div>
             ))}
             {data.expenses.length === 0 && (
@@ -163,6 +172,8 @@ export default function IncomeStatement() {
           )}
         </>
       )}
+
+      {drilldown && <DrilldownModal params={drilldown} onClose={() => setDrilldown(null)} />}
     </div>
   );
 }

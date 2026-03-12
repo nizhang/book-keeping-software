@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useBalanceSheet } from '../../../api/reports';
 import { useClasses } from '../../../api/classes';
+import DrilldownModal from '../../../components/shared/DrilldownModal';
 import dayjs from 'dayjs';
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
@@ -43,6 +44,14 @@ const s = {
 export default function BalanceSheet() {
   const [asOfDate, setAsOfDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [classId, setClassId] = useState('');
+  const [drilldown, setDrilldown] = useState(null);
+
+  const openDrilldown = (r) => setDrilldown({
+    accountId: r.account_id,
+    endDate: asOfDate,          // balance sheet is cumulative up to asOfDate
+    classId: classId || null,
+    includeOpeningBalance: true,
+  });
 
   const { data: classes = [] } = useClasses();
   const { data, isLoading, error } = useBalanceSheet(asOfDate, classId || null);
@@ -113,7 +122,7 @@ export default function BalanceSheet() {
                     <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>(contra)</span>
                   )}
                 </span>
-                <span style={{ fontWeight: '500', color: isContraAsset(r) ? '#dc2626' : 'inherit' }}>
+                <span onClick={() => openDrilldown(r)} style={{ fontWeight: '500', color: isContraAsset(r) ? '#dc2626' : 'inherit', cursor: 'pointer', textDecoration: 'underline dotted' }}>
                   {isContraAsset(r) ? `(${fmt(Math.abs(r.balance))})` : fmt(r.balance)}
                 </span>
               </div>
@@ -136,7 +145,7 @@ export default function BalanceSheet() {
             {data.liabilities.items.map(r => (
               <div key={r.account_id} style={s.row}>
                 <span><span style={s.code}>{r.code}</span>{r.name}</span>
-                <span style={{ fontWeight: '500' }}>{fmt(r.balance)}</span>
+                <span onClick={() => openDrilldown(r)} style={{ fontWeight: '500', cursor: 'pointer', textDecoration: 'underline dotted' }}>{fmt(r.balance)}</span>
               </div>
             ))}
             {data.liabilities.items.length === 0 && (
@@ -166,7 +175,7 @@ export default function BalanceSheet() {
                 ) : (
                   <div key={r.account_id || i} style={s.row}>
                     <span><span style={s.code}>{r.code}</span>{r.name}</span>
-                    <span style={{ fontWeight: '500', color: r.balance < 0 ? '#dc2626' : 'inherit' }}>
+                    <span onClick={() => r.account_id && openDrilldown(r)} style={{ fontWeight: '500', color: r.balance < 0 ? '#dc2626' : 'inherit', cursor: r.account_id ? 'pointer' : 'default', textDecoration: r.account_id ? 'underline dotted' : 'none' }}>
                       {r.balance < 0 ? `(${fmt(Math.abs(r.balance))})` : fmt(r.balance)}
                     </span>
                   </div>
@@ -190,6 +199,8 @@ export default function BalanceSheet() {
           </div>
         </>
       )}
+
+      {drilldown && <DrilldownModal params={drilldown} onClose={() => setDrilldown(null)} />}
     </div>
   );
 }
