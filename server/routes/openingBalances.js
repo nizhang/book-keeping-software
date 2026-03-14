@@ -29,7 +29,8 @@ router.get('/', (req, res) => {
       accountName:  e.account_name,
       accountCode:  e.account_code,
       accountType:  e.account_type,
-      amount:       e.amount,
+      // Reconstruct sign: if entry_type matches normal_balance direction → positive, else → negative
+      amount:       e.normal_balance === e.entry_type ? e.amount : -e.amount,
       classId:      e.class_id,
       className:    e.class_name,
     }));
