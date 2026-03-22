@@ -49,7 +49,8 @@
       "Bash(taskkill //F //PID 20692)",
       "Bash(node check_null.js)",
       "Bash(curl -s \"http://localhost:3001/api/reports/balance-sheet?asOfDate=2026-03-08\")",
-      "Bash(node -e \"const d=require\\(''fs''\\).readFileSync\\(''/dev/stdin'',''utf8''\\); const r=JSON.parse\\(d\\); console.log\\(''isBalanced:'', r.isBalanced\\); console.log\\(''totalAssets:'', r.assets.total\\); console.log\\(''totalLiabilities:'', r.liabilities.total\\); console.log\\(''totalEquity:'', r.equity.total\\); console.log\\(''equityItems:'', r.equity.items.map\\(i=>i.name+'': ''+i.balance\\)\\);\")"
+      "Bash(node -e \"const d=require\\(''fs''\\).readFileSync\\(''/dev/stdin'',''utf8''\\); const r=JSON.parse\\(d\\); console.log\\(''isBalanced:'', r.isBalanced\\); console.log\\(''totalAssets:'', r.assets.total\\); console.log\\(''totalLiabilities:'', r.liabilities.total\\); console.log\\(''totalEquity:'', r.equity.total\\); console.log\\(''equityItems:'', r.equity.items.map\\(i=>i.name+'': ''+i.balance\\)\\);\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/accounts -H \"Content-Type: application/json\" -d '{\"\"code\"\":\"\"1050\"\",\"\"name\"\":\"\"Reserves Held by PM\"\",\"\"type\"\":\"\"ASSET\"\",\"\"normal_balance\"\":\"\"DEBIT\"\"}')"
     ]
   }
 }

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/database');
-const { categorizeTransaction, uncategorizeTransaction, bulkCategorize } = require('../services/accountingService');
+const { categorizeTransaction, uncategorizeTransaction, bulkCategorize, mergeCategorize } = require('../services/accountingService');
 
 // GET /api/transactions
 router.get('/', (req, res) => {
@@ -151,6 +151,26 @@ router.post('/:id/categorize', (req, res, next) => {
 router.delete('/:id/categorize', (req, res, next) => {
   try {
     const result = uncategorizeTransaction(parseInt(req.params.id));
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
+// POST /api/transactions/merge-categorize
+// Body: { transactionIds: [id, ...], splits: [{ categoryAccountId, amount, classId?, memo? }] }
+router.post('/merge-categorize', (req, res, next) => {
+  const { transactionIds, splits } = req.body;
+  if (!Array.isArray(transactionIds) || transactionIds.length < 2)
+    return next(Object.assign(new Error('At least 2 transactionIds required'), { status: 400 }));
+  if (!Array.isArray(splits) || splits.length === 0)
+    return next(Object.assign(new Error('splits array is required'), { status: 400 }));
+  try {
+    const parsed = splits.map(s => ({
+      categoryAccountId: parseInt(s.categoryAccountId),
+      amount:    parseFloat(s.amount),
+      classId:   s.classId ? parseInt(s.classId) : null,
+      memo:      s.memo || null,
+    }));
+    const result = mergeCategorize(transactionIds.map(Number), parsed);
     res.json(result);
   } catch (e) { next(e); }
 });

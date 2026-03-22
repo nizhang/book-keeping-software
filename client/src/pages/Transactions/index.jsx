@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTransactions, useCategorize, useUncategorize, useBulkCategorize, useDeleteTransaction, useFlipAmount } from '../../api/transactions';
+import { useTransactions, useCategorize, useUncategorize, useBulkCategorize, useMergeCategorize, useDeleteTransaction, useFlipAmount } from '../../api/transactions';
 import { useAccounts } from '../../api/accounts';
 import { useClasses } from '../../api/classes';
 import AccountSelect from '../../components/shared/AccountSelect';
@@ -231,9 +231,142 @@ function SplitModal({ txn, onClose }) {
   );
 }
 
+// ─── MergeSplitModal ─────────────────────────────────────────────────────────
+
+function MergeSplitModal({ txns, onClose }) {
+  const mergeCat = useMergeCategorize();
+  const { data: accounts = [] } = useAccounts();
+  const combinedAmount = txns.reduce((s, t) => s + t.amount, 0);
+
+  const [splits, setSplits] = useState([{ categoryAccountId: null, amount: Math.abs(combinedAmount), classId: null, memo: '' }]);
+  const [bulkClass, setBulkClass] = useState(null);
+
+  const signedAmt = (sp) => {
+    const amt = parseFloat(sp.amount) || 0;
+    const acct = accounts.find(a => a.id === sp.categoryAccountId);
+    if (!acct) return combinedAmount >= 0 ? amt : -amt;
+    if (acct.type === 'EXPENSE') return -amt;
+    if (acct.type === 'REVENUE') return amt;
+    return combinedAmount >= 0 ? amt : -amt;
+  };
+
+  const signedTotal = Math.round(splits.reduce((s, sp) => s + signedAmt(sp), 0) * 100) / 100;
+  const remaining   = Math.round((combinedAmount - signedTotal) * 100) / 100;
+  const isBalanced  = Math.abs(remaining) < 0.01;
+
+  const setField = (idx, field) => (value) =>
+    setSplits(prev => prev.map((sp, i) => i === idx ? { ...sp, [field]: value } : sp));
+
+  const addLine = () => {
+    const rem = Math.round((combinedAmount - splits.reduce((s, sp) => s + signedAmt(sp), 0)) * 100) / 100;
+    setSplits(prev => [...prev, { categoryAccountId: null, amount: Math.abs(rem) > 0.01 ? Math.abs(rem) : 0, classId: null, memo: '' }]);
+  };
+
+  const handleSave = async () => {
+    if (!isBalanced) return toast.error('Amounts must equal the combined total');
+    if (splits.some(s => !s.categoryAccountId)) return toast.error('Each line needs an account');
+    if (splits.some(s => !s.classId)) return toast.error('Each line must have a class assigned');
+    try {
+      await mergeCat.mutateAsync({
+        transactionIds: txns.map(t => t.id),
+        splits: splits.map(s => ({
+          categoryAccountId: parseInt(s.categoryAccountId),
+          amount: parseFloat(s.amount),
+          classId: s.classId ? parseInt(s.classId) : null,
+          memo: s.memo || null,
+        })),
+      });
+      toast.success(`${txns.length} transactions split together`);
+      onClose();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const m = {
+    overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+    box: { background: '#fff', borderRadius: '14px', padding: '28px', width: '780px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' },
+    txnList: { fontSize: '12px', color: '#475569', background: '#f8fafc', borderRadius: '6px', padding: '8px 12px', marginBottom: '16px', borderLeft: '3px solid #6366f1' },
+    grid: { display: 'grid', gridTemplateColumns: '100px 1fr 140px 1fr 28px', gap: '8px', alignItems: 'center', marginBottom: '8px' },
+    hdr: { fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', padding: '0 4px' },
+    inp: { padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', width: '100%' },
+    applyRow: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', padding: '7px 10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' },
+    xBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#94a3b8' },
+  };
+
+  return (
+    <div style={m.overlay}>
+      <div style={m.box}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+          <div>
+            <div style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>Split Together — <AmountDisplay amount={combinedAmount} /></div>
+            <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '10px' }}>Combined split across {txns.length} transactions — amounts allocated proportionally</div>
+          </div>
+          <button style={m.xBtn} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={m.txnList}>
+          {txns.map(t => (
+            <div key={t.id}>{dayjs(t.date).format('MMM D, YYYY')} &nbsp;·&nbsp; {t.description.slice(0, 55)} &nbsp;·&nbsp; <strong><AmountDisplay amount={t.amount} /></strong></div>
+          ))}
+        </div>
+
+        <div style={m.grid}>
+          <div style={m.hdr}>Amount</div><div style={m.hdr}>Account</div>
+          <div style={m.hdr}>Class</div><div style={m.hdr}>Memo</div><div />
+        </div>
+
+        <div style={m.applyRow}>
+          <span style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>Apply class to all:</span>
+          <ClassSelect value={bulkClass} onChange={setBulkClass} placeholder="Select class..." style={{ flex: 1, maxWidth: '200px' }} />
+          <button style={{ padding: '5px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+            onClick={() => { if (bulkClass !== null) setSplits(prev => prev.map(sp => ({ ...sp, classId: bulkClass }))); }}>
+            Apply to all
+          </button>
+        </div>
+
+        {splits.map((sp, idx) => {
+          const isExpense = accounts.find(a => a.id === sp.categoryAccountId)?.type === 'EXPENSE';
+          return (
+            <div key={idx} style={m.grid}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                {isExpense && <span style={{ color: '#dc2626', fontWeight: '700', fontSize: '15px', flexShrink: 0 }}>−</span>}
+                <input type="number" step="0.01" style={{ ...m.inp, borderColor: isExpense ? '#fca5a5' : '#d1d5db' }}
+                  value={sp.amount} onChange={e => setField(idx, 'amount')(parseFloat(e.target.value) || 0)} />
+              </div>
+              <AccountSelect value={sp.categoryAccountId} onChange={setField(idx, 'categoryAccountId')} placeholder="Select account..." style={{ width: '100%' }} />
+              <ClassSelect value={sp.classId} onChange={setField(idx, 'classId')} placeholder="No class" style={{ width: '100%' }} />
+              <input type="text" style={m.inp} value={sp.memo} onChange={e => setField(idx, 'memo')(e.target.value)} placeholder="Memo (optional)" />
+              <button style={m.xBtn} onClick={() => setSplits(prev => prev.filter((_, i) => i !== idx))} disabled={splits.length === 1}>✕</button>
+            </div>
+          );
+        })}
+
+        <button style={{ padding: '6px 14px', border: '1px dashed #c4b5fd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', color: '#7c3aed', background: '#faf5ff', marginTop: '4px' }} onClick={addLine}>+ Add line</button>
+
+        <div style={{ borderTop: '1px solid #e2e8f0', margin: '16px 0' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: isBalanced ? '#16a34a' : '#dc2626' }}>
+              {isBalanced ? '✓ Balanced' : `Remaining: $${Math.abs(remaining).toFixed(2)}`}
+            </div>
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Each transaction gets a proportional share of each line</div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button style={{ padding: '8px 18px', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', background: '#fff' }} onClick={onClose}>Cancel</button>
+            <button style={{ padding: '8px 18px', background: isBalanced ? '#6366f1' : '#94a3b8', color: '#fff', border: 'none', borderRadius: '8px', cursor: isBalanced ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: '600' }}
+              onClick={handleSave} disabled={!isBalanced || mergeCat.isPending}>
+              {mergeCat.isPending ? 'Saving…' : 'Save Split'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── BulkBar ─────────────────────────────────────────────────────────────────
 
-function BulkBar({ selected, onClear }) {
+function BulkBar({ selected, selectedTxns, onClear, onMergeSplit }) {
   const bulk = useBulkCategorize();
   const [catId, setCatId] = useState(null);
 
@@ -251,6 +384,11 @@ function BulkBar({ selected, onClear }) {
       <button onClick={apply} style={{ padding: '6px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
         Apply to all
       </button>
+      {selected.length >= 2 && (
+        <button onClick={onMergeSplit} style={{ padding: '6px 14px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+          Split Together
+        </button>
+      )}
       <button onClick={onClear} style={{ padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff' }}>
         Clear
       </button>
@@ -376,6 +514,7 @@ export default function Transactions() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ limit: 50, categorized: 'false' });
   const [selected, setSelected] = useState([]);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const { data: classes = [] } = useClasses();
 
   const { data, isLoading } = useTransactions({ ...filters, page });
@@ -416,7 +555,20 @@ export default function Transactions() {
         </select>
       </div>
 
-      {selected.length > 0 && <BulkBar selected={selected} onClear={() => setSelected([])} />}
+      {selected.length > 0 && (
+        <BulkBar
+          selected={selected}
+          selectedTxns={transactions.filter(t => selected.includes(t.id))}
+          onClear={() => setSelected([])}
+          onMergeSplit={() => setMergeOpen(true)}
+        />
+      )}
+      {mergeOpen && (
+        <MergeSplitModal
+          txns={transactions.filter(t => selected.includes(t.id))}
+          onClose={() => { setMergeOpen(false); setSelected([]); }}
+        />
+      )}
 
       {isLoading ? (
         <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>

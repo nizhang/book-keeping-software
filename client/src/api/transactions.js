@@ -62,6 +62,17 @@ export const useFlipAmount = () => {
   });
 };
 
+export const useMergeCategorize = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => api.post('/transactions/merge-categorize', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+};
+
 export const useBulkCategorize = () => {
   const qc = useQueryClient();
   return useMutation({

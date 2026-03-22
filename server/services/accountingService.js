@@ -26,17 +26,25 @@ function categorizeTransaction(transactionId, splits) {
   const splitWithTypes = [];
   for (const split of splits) {
     if (!split.categoryAccountId) throw Object.assign(new Error('Each split must have a categoryAccountId'), { status: 400 });
-    if (typeof split.amount !== 'number' || split.amount <= 0) throw Object.assign(new Error('Each split amount must be a positive number'), { status: 400 });
+    if (typeof split.amount !== 'number' || split.amount === 0) throw Object.assign(new Error('Each split amount must be non-zero'), { status: 400 });
 
     const acct = db.prepare('SELECT * FROM accounts WHERE id = ?').get(split.categoryAccountId);
     if (!acct) throw Object.assign(new Error(`Account ${split.categoryAccountId} not found`), { status: 404 });
 
+    const isBalanceSheet = !['EXPENSE', 'REVENUE'].includes(acct.type);
+    if (!isBalanceSheet && split.amount < 0) throw Object.assign(new Error('Revenue and expense amounts must be positive'), { status: 400 });
+
     let entryType;
     if (acct.type === 'EXPENSE') entryType = 'DEBIT';
     else if (acct.type === 'REVENUE') entryType = 'CREDIT';
-    else entryType = txn.amount >= 0 ? 'CREDIT' : 'DEBIT'; // balance sheet: follow txn direction
+    else {
+      // Balance-sheet: follow txn direction; negative amount flips the side
+      // e.g. positive txn + negative amount = DEBIT asset (asset increases, reserve held by PM)
+      const baseType = txn.amount >= 0 ? 'CREDIT' : 'DEBIT';
+      entryType = split.amount < 0 ? (baseType === 'DEBIT' ? 'CREDIT' : 'DEBIT') : baseType;
+    }
 
-    splitWithTypes.push({ ...split, entryType });
+    splitWithTypes.push({ ...split, amount: Math.abs(split.amount), entryType });
   }
 
   // Signed validation: CREDIT = positive contribution, DEBIT = negative.
@@ -216,4 +224,49 @@ function saveOpeningBalances(asOfDate, lines) {
   return { success: true, transactionId: txnId, lineCount: lines.length };
 }
 
-module.exports = { categorizeTransaction, uncategorizeTransaction, bulkCategorize, saveOpeningBalances };
+/**
+ * Merge-categorize: apply one combined split across multiple transactions.
+ * Splits must sum (signed) to the combined total of all transaction amounts.
+ * Each split line is proportionally allocated to each transaction by its share
+ * of the total absolute amount. The last transaction absorbs rounding remainders.
+ */
+function mergeCategorize(transactionIds, splits) {
+  const db = getDb();
+  const txns = transactionIds.map(id => {
+    const t = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+    if (!t) throw Object.assign(new Error(`Transaction ${id} not found`), { status: 404 });
+    return t;
+  });
+
+  const totalAbs = txns.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  const doAll = db.transaction(() => {
+    txns.forEach((txn, i) => {
+      const isLast = i === txns.length - 1;
+      const ratio  = Math.abs(txn.amount) / totalAbs;
+
+      const txnSplits = splits.map(sp => {
+        let amt;
+        if (isLast) {
+          const allocatedToOthers = txns.slice(0, i).reduce((sum, prev) => {
+            const r = Math.abs(prev.amount) / totalAbs;
+            const sign = sp.amount < 0 ? -1 : 1;
+            return sum + sign * Math.round(Math.abs(sp.amount) * r * 100) / 100;
+          }, 0);
+          amt = Math.round((sp.amount - allocatedToOthers) * 100) / 100;
+        } else {
+          const sign = sp.amount < 0 ? -1 : 1;
+          amt = sign * Math.round(Math.abs(sp.amount) * ratio * 100) / 100;
+        }
+        return { ...sp, amount: amt };
+      });
+
+      categorizeTransaction(txn.id, txnSplits);
+    });
+  });
+
+  doAll();
+  return { success: true, count: txns.length };
+}
+
+module.exports = { categorizeTransaction, uncategorizeTransaction, bulkCategorize, saveOpeningBalances, mergeCategorize };
