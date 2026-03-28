@@ -56,6 +56,34 @@ function SplitModal({ txn, onClose }) {
       : [{ categoryAccountId: null, amount: absAmount, classId: defaultClassId, memo: '' }]
   );
   const [bulkClass, setBulkClass] = useState(defaultClassId);
+  const [parsing, setParsing] = useState(false);
+
+  const handleParseStatement = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setParsing(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/parse-statement', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || 'Parse failed');
+      const { lines } = await res.json();
+      if (!lines?.length) { toast.error('No line items found in statement'); return; }
+      setSplits(lines.map(l => ({
+        categoryAccountId: null,
+        amount: l.amount,
+        classId: defaultClassId,
+        memo: l.description,
+        _isIncome: l.isIncome,
+      })));
+      toast.success(`Parsed ${lines.length} lines from statement — assign accounts to each line`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setParsing(false);
+    }
+  };
 
   // Signed contribution per split: EXPENSE=DEBIT (negative net), REVENUE=CREDIT (positive net),
   // balance-sheet accounts follow transaction direction. This lets income and expense splits
@@ -126,7 +154,13 @@ function SplitModal({ txn, onClose }) {
   return (
     <div style={modal.overlay}>
       <div style={modal.box}>
-        <div style={modal.title}>Split Transaction</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+          <div style={modal.title}>Split Transaction</div>
+          <label style={{ padding: '6px 12px', background: parsing ? '#f1f5f9' : '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '7px', cursor: parsing ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: '600', color: '#2563eb', whiteSpace: 'nowrap' }}>
+            {parsing ? '⏳ Parsing…' : '📄 Parse Statement'}
+            <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={handleParseStatement} disabled={parsing} />
+          </label>
+        </div>
         <div style={modal.sub}>
           {txn.description} &nbsp;•&nbsp; {dayjs(txn.date).format('MMM D, YYYY')} &nbsp;•&nbsp;
           <strong><AmountDisplay amount={txn.amount} /></strong>
@@ -179,7 +213,7 @@ function SplitModal({ txn, onClose }) {
             <AccountSelect
               value={sp.categoryAccountId}
               onChange={setField(idx, 'categoryAccountId')}
-              placeholder="Select account..."
+              placeholder={sp._isIncome === true ? '↑ Income account…' : sp._isIncome === false ? '↓ Expense account…' : 'Select account…'}
               style={{ width: '100%' }}
             />
             <ClassSelect

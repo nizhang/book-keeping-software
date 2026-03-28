@@ -12,6 +12,7 @@ const importsRouter       = require('./routes/imports');
 const reportsRouter       = require('./routes/reports');
 const classesRouter          = require('./routes/classes');
 const openingBalancesRouter  = require('./routes/openingBalances');
+const parseStatementRouter   = require('./routes/parseStatement');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +32,7 @@ app.use('/api/import',       importsRouter);
 app.use('/api/reports',      reportsRouter);
 app.use('/api/classes',           classesRouter);
 app.use('/api/opening-balances', openingBalancesRouter);
+app.use('/api/parse-statement', parseStatementRouter);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
