@@ -52,7 +52,7 @@ function categorizeTransaction(transactionId, splits) {
   const signedTotal = splitWithTypes.reduce((s, sp) =>
     s + (sp.entryType === 'CREDIT' ? sp.amount : -sp.amount), 0);
 
-  if (Math.abs(signedTotal - txn.amount) > 0.01) {
+  if (Math.round(Math.abs(signedTotal - txn.amount) * 100) / 100 > 0.01) {
     throw Object.assign(new Error(
       `Net split total (${signedTotal.toFixed(2)}) must equal transaction amount (${txn.amount.toFixed(2)})`
     ), { status: 400 });
