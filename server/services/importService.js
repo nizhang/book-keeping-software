@@ -4,10 +4,10 @@ const { parseCsv } = require('./parsers/csvParser');
 const { parseOfx } = require('./parsers/ofxParser');
 const { parseXlsx } = require('./parsers/xlsxParser');
 
-function generateFitId(date, description, amount) {
+function generateFitId(date, description, amount, seq, classId) {
   return crypto
     .createHash('sha1')
-    .update(`${date}|${description}|${amount}`)
+    .update(`${date}|${description}|${amount}|${seq}|${classId || ''}`)
     .digest('hex')
     .slice(0, 20);
 }
@@ -69,8 +69,12 @@ function importTransactions(buffer, filename, mimeType, sourceAccountId, dryRun 
 
     let imported = 0, skipped = 0;
 
+    const seqCounters = new Map();
     for (const row of parsed) {
-      const fitId = row.fitId || generateFitId(row.date, row.description, row.amount);
+      const baseKey = `${row.date}|${row.description}|${row.amount}`;
+      const seq = seqCounters.get(baseKey) || 0;
+      seqCounters.set(baseKey, seq + 1);
+      const fitId = row.fitId || generateFitId(row.date, row.description, row.amount, seq, classId);
       const result = insertTxn.run({
         batchId,
         date: row.date,
